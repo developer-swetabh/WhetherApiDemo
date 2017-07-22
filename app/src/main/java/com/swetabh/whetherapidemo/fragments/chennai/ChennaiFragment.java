@@ -15,15 +15,18 @@ import android.widget.Toast;
 import com.swetabh.whetherapidemo.MainContract;
 import com.swetabh.whetherapidemo.R;
 import com.swetabh.whetherapidemo.WhetherApiKey;
+import com.swetabh.whetherapidemo.WhetherApplication;
 import com.swetabh.whetherapidemo.adapter.WhetherAdapter;
 import com.swetabh.whetherapidemo.models.WhetherResponse;
 import com.swetabh.whetherapidemo.network.RetrofitClient;
 
+import java.util.List;
+
 import butterknife.BindView;
 import butterknife.ButterKnife;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
+import rx.Subscriber;
+import rx.Subscription;
+import rx.android.schedulers.AndroidSchedulers;
 
 /**
  * A simple {@link Fragment} subclass.
@@ -42,6 +45,8 @@ public class ChennaiFragment extends Fragment implements MainContract.ChennaiVie
     private Context mContext;
     private MainContract.ChennaiPresenter mPresenter;
     private MainContract.MainCommunicator mCommunicator;
+    private List<com.swetabh.whetherapidemo.models.List> mDataList;
+    private Subscription subscription;
 
 
     public ChennaiFragment() {
@@ -97,20 +102,27 @@ public class ChennaiFragment extends Fragment implements MainContract.ChennaiVie
     @Override
     public void internetConnected() {
         showProgress();
-        RetrofitClient.getInstance()
-                .getWhetherReport(CHENNAI_ID, WhetherApiKey.WHETHER_API_KEY)
-                .enqueue(new Callback<WhetherResponse>() {
+        WhetherApplication application = WhetherApplication.get(mContext);
+        subscription = RetrofitClient.getInstance().getWhetherReport(CHENNAI_ID, WhetherApiKey.WHETHER_API_KEY)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeOn(application.defaultSubscribeScheduler())
+                .subscribe(new Subscriber<WhetherResponse>() {
                     @Override
-                    public void onResponse(Call<WhetherResponse> call, Response<WhetherResponse> response) {
+                    public void onCompleted() {
                         hideProgress();
-                        WhetherAdapter adapter = new WhetherAdapter(mContext, response.body().getList());
+                        WhetherAdapter adapter = new WhetherAdapter(mContext, mDataList);
                         mRecyclerView.setLayoutManager(new LinearLayoutManager(mContext));
                         mRecyclerView.setAdapter(adapter);
                     }
 
                     @Override
-                    public void onFailure(Call<WhetherResponse> call, Throwable t) {
+                    public void onError(Throwable e) {
                         hideProgress();
+                    }
+
+                    @Override
+                    public void onNext(WhetherResponse whetherResponse) {
+                        mDataList = whetherResponse.getList();
                     }
                 });
     }
@@ -134,5 +146,11 @@ public class ChennaiFragment extends Fragment implements MainContract.ChennaiVie
     private void hideProgress() {
         mProgressbar.setVisibility(View.GONE);
         mRecyclerView.setVisibility(View.VISIBLE);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        mPresenter.detachView(subscription);
     }
 }
